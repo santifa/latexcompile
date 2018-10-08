@@ -1,0 +1,11 @@
+[package]
+name = "latexcompile"
+version = "0.1.0"
+authors = ["Henrik Jürges <juerges.henrik@gmail.com>"]
+
+[dependencies]
+failure = "0.1.2"
+failure_derive = "0.1.2"
+log = "0.4"
+regex = "^1.0"
+tempfile = "3.0.3"
