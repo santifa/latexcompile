@@ -9,37 +9,33 @@
 //! ## Example
 //!
 //! ```
+//! use std::collections::HashMap;
+//! use std::fs::copy;
+//! use std::path::{Path, PathBuf};
+//! use latexcompile::{LatexCompiler, Context, CompilerError};
 //! fn main() {
 //!     // create the template map
 //!     let mut template = HashMap::new();
 //!     // provide the folder where the file for latex compiler are found
 //!     let template_folder = PathBuf::from("assets");
 //!     // create a new clean compiler enviroment and the compiler wrapper
-//!     let context = Context::new(template_folder, "card.tex")
+//!     let context = Context::new(template_folder, "card.tex").unwrap();
 //!     let compiler = LatexCompiler::new(context).unwrap();
 //!     // run the underlying pdflatex or whatever
-//!     let result_path = compiler.run("example.pdf", &template);
+//!     let result = compiler.run(None, &template).unwrap();
 //!
 //!     // copy the file into the working directory
-//!     let output = current_dir.join(output_name);
-//!     copy(result.clone(), output.clone()).chain_err(|| {
-//!         format!(
-//!             "Unable to copy result {:?} to location {:?}",
-//!             result, output
-//!         )
-//!     })?;
+//!     let output = ::std::env::current_dir().unwrap().join("out.pdf");
+//!     copy(result.clone(), output.clone());
 //! }
 //! ```
 //!
 extern crate failure;
 #[macro_use]
 extern crate failure_derive;
-#[macro_use]
-extern crate log;
 extern crate regex;
 extern crate tempfile;
 
-use failure::Error;
 use regex::Regex;
 use std::collections::HashMap;
 use std::ffi::OsStr;
@@ -131,8 +127,9 @@ impl Context {
     /// build the command line
     fn get_cmd(&self) -> Command {
         let mut cmd = Command::new(&self.cmd.cmd);
-        cmd.args(&self.cmd.args);
-        cmd.arg(&self.main_file);
+        cmd.args(&self.cmd.args)
+            .arg(&self.main_file)
+            .current_dir(self.working_dir.path());
         cmd
     }
 
@@ -158,37 +155,23 @@ impl LatexCompiler {
         })
     }
 
-    /// Switch the working directory and return
-    /// the old value
-    fn switch_env(path: &Path) -> Result<PathBuf> {
-        let old = ::std::env::current_dir().or(Err(CompilerError::EnviromentError))?;
-        ::std::env::set_current_dir(path).or(Err(CompilerError::EnviromentError))?;
-        Ok(old.as_path().to_path_buf())
-    }
-
-
-    pub fn run(&self, output_name: &str, dict: &HashMap<String, String>) -> Result<()> {
+    pub fn run(&self, suffix: Option<&str>, dict: &HashMap<String, String>) -> Result<PathBuf> {
         // prepare sources
         self.tp.process_sources(&self.ctx, &dict);
-
-        // change into new working directory
-        let cur_dir = LatexCompiler::switch_env(self.ctx.working_dir.path())?;
 
         // first and second run
         self.ctx.get_cmd().status().map_err(CompilerError::Io)?;
         self.ctx.get_cmd().status().map_err(CompilerError::Io)?;
 
         // get name of the result file
-        let result_name = self.ctx.get_result_name(".pdf").ok_or(CompilerError::CompilationError)?;
+        let result_name = self.ctx.get_result_name(suffix.unwrap_or(".pdf")).ok_or(CompilerError::CompilationError)?;
 
         // copy result file
-        let output = cur_dir.join(output_name);
-        copy(result_name, output)
-            .map_err(CompilerError::Io)?;
+        // let output = ::std::env::current_dir().map(|dir| dir.join(output_name)).map_err(CompilerError::Io)?;
+        // copy(result_name, output)
+        //     .map_err(CompilerError::Io)?;
 
-        // reset env
-        LatexCompiler::switch_env(&cur_dir)?;
-        Ok(())
+        Ok(self.ctx.working_dir.path().join(result_name))
     }
 }
 
