@@ -526,14 +526,13 @@ mod tests {
         assert_eq!(res.unwrap(), expected.to_vec());
     }
 
-    /*
     #[test]
     fn test_context_cmd() {
-        let mut context = Context::new(PathBuf::new(), "".into());
-        assert!(context.is_ok());
-        let context = context.unwrap().with_cmd("latexmk").with_args("arg1").add_arg("arg2");
-        let ctx = ("latexmk".into(), vec!["arg1".into(), "arg2".into()]);
-        assert_eq!(context.cmd, ctx);
+        let dict = HashMap::new();
+        let wrapper = LatexCompiler::new(dict);
+        assert!(wrapper.is_ok());
+        let wrapper = wrapper.unwrap().with_cmd("latexmk").with_args("arg1").add_arg("arg2");
+        let cmd = ("latexmk".into(), vec!["arg1".into(), "arg2".into()]);
+        assert_eq!(wrapper.cmd, cmd);
     }
-*/
 }
