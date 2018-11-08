@@ -180,7 +180,6 @@ impl<'a> From<&'a str> for LatexInput {
 /// Internal type alias for the key value store
 type TemplateDict = HashMap<String, String>;
 
-
 /// The processor takes latex files as input and replaces
 /// matching placeholders (e.g. ##someVar##) with the real
 /// content provided as HashMap.
@@ -196,7 +195,6 @@ impl TemplateProcessor {
                 .or(Err(LatexError::LatexError("Failed to compile regex.".to_string())))?,
         })
     }
-
 
     /// Replace placeholders with their actual value or nothing if no replacement
     /// is provided. The content is duplicated within this step.
@@ -233,6 +231,17 @@ impl TemplateProcessor {
 /// The wrapper struct around some latex compiler.
 /// It provides a clean temporary enviroment for the
 /// latex compilation.
+/// ```
+/// use std::fs::write;
+/// use latexcompile::{LatexCompiler, LatexInput, LatexError};
+///
+/// fn main {
+///    let compiler = LatexCompiler::new(HashMap::new()).unwrap();
+///    let input = LatexInput::from("assets");
+///    let pdf = compiler.run("main.tex");
+///    assert!(pdf.is_ok());
+/// }
+/// ```
 pub struct LatexCompiler {
     working_dir: TempDir,
     cmd: Cmd,
@@ -283,171 +292,41 @@ impl LatexCompiler {
     }
 
     pub fn run(&self, main: &str, input: &LatexInput) -> Result<Vec<u8>> {
-        // prepare sources
-        Err(LatexError::LatexError("No input files provided.".into()))
-    }
-}
- /*       for file in files.iter() {
-            let source_dir = source_path.unwrap_or(|| {
-                let source = Path::new(&files[0]);
-                source.is_dir() {
-                    source
-                } else {
-                    source.parent().unwrap_or(Path::new("/"))
-                }
-            });
-       //     self.preprocess_input(file, source);
+        // check if input is empty
+        if input.input.is_empty() {
+            return Err(LatexError::LatexError("No input files provided.".into()))
+        }
+
+        // apply the templating and create resources in the working dir
+        for (name, buf) in &input.input {
+            let transformed_buf = self.tp.process_placeholders(buf, &self.dict)?;
+            let path = self.get_result_path(PathBuf::from(name))?;
+            fs::write(path, transformed_buf).map_err(LatexError::Io)?;
+
         }
 
         // first and second run
-        self.ctx.get_cmd().status().map_err(CompilerError::Io)?;
-        self.ctx.get_cmd().status().map_err(CompilerError::Io)?;
+        self.get_cmd(main).status().map_err(LatexError::Io)?;
+        self.get_cmd(main).status().map_err(LatexError::Io)?;
 
-        // get name of the result file
-        let result_name = self.ctx.get_result_name(suffix.unwrap_or(".pdf")).ok_or(CompilerError::CompilationError)?;
-
-        // copy result file
-        // let output = ::std::env::current_dir().map(|dir| dir.join(output_name)).map_err(CompilerError::Io)?;
-        // copy(result_name, output)
-        //     .map_err(CompilerError::Io)?;
-
-        Ok(self.ctx.working_dir.path().join(result_name))
-*/
- //   }
-/*
-    /// The preprocessing copies the provided files or folder structures
-    /// into the temporary working directory. Normal text files gets checked
-    /// for replacements by the templating processor.
-    fn preprocess_input(&self, file: &PathBuf, source_dir: &PathBuf) -> Result<()> {
-        let path = Path::new(file);
-        let metadata = path.metadata().expect("metadata call failed");
-        let destination = self.ctx.working_dir.path().join(
-            src_file
-                .strip_prefix(self.ctx.source_dir)
-                .or(Err(CompilerError::TemplatingError("Unable to strip prefix.".to_string())))?
-        );
-
-        if path.is_file() {
-            self.preprocess_file(&path, &destination)?;
-
-        } else if path.is_dir() {
-let paths = read_dir(path)
-.or(Err(CompilerError::TemplatingError(format!("Failed to read directory {:?}.", path).to_string())))?;
-            create_dir(destination).map_err(CompilerError::Io)?;
-            for path in paths {
-                    let src_file = path
-                    .or(Err(CompilerError::TemplatingError("Unable to get source file path.".to_string())))?.path();
-                self.preprocess_input(&src_file, source_dir)?;
-            }
-        } else {
-            Error(CompilerError::TemplatingError("Neither a file nor a directory.".into()))
-        }
-        Ok(())
+        // get the output file
+        let mut pdf = PathBuf::from(main); //self.get_result_path(PathBuf::from(main))?;
+        let stem = PathBuf::from(pdf.file_stem().unwrap().to_str().unwrap());
+        pdf = self.working_dir.path().join(stem.with_extension("pdf"));
+        fs::read(pdf).map_err(LatexError::Io)
     }
 
-    fn preprocess_file(&self, path: &Path, destination: &Path) -> Result<()> {
-        let mut content = String::new();
-        let mut src_file = File::open(path)
-            .or(Err(CompilerError::TemplatingError("Unable to open source file.".to_string())))?;
-
-        match src_file.read_to_string(&mut content) {
-            Err(_) => {
-                // maybe binary data, so just copy it
-                copy(&src, &dst).map_err(CompilerError::Io)?;
-                //.or(Err(CompilerError::TemplatingError("Unable to copy file.".to_string())))?;
-            }
-            Ok(_) => {
-                let replaced_content = self.tp.process_placeholders(&content, &self.dict)?;
-                //                        self.tp.process_sources(&self.ctx, &self.dict, files)?;
-                File::create(dst)
-                    .and_then(|mut f| f.write_all(replaced_content.as_bytes()))
-                    .or(Err(CompilerError::TemplatingError("Unable to create destination file.".to_string())))?;
-            }
+    /// Create the given path as subpath within the working directory.
+    fn get_result_path(&self, path: PathBuf) -> Result<PathBuf> {
+        let dir = self.working_dir.path();
+        let to_create = dir.join(path);
+        match to_create.parent() {
+            Some(p) => fs::create_dir_all(p).map_err(LatexError::Io)?,
+            None => ()
         }
-        Ok(())
-    }*/
-
-
-/*
-    /// Replace variables for all files within the template path and
-    /// copy the results into the created enviroment.
-    // TODO Handle folders
-    fn process_sources(&self, ctx: &Context, dict: &HashMap<String, String>, files: &[u8]) -> Result<()> {
-        let paths = read_dir(&ctx.source_dir)
-            .or(Err(CompilerError::TemplatingError("Failed to read template directory.".to_string())))?;
-        for path in paths {
-            let src_file = path
-                .or(Err(CompilerError::TemplatingError("Unable to get source file path.".to_string())))?.path();
-    let dst_file = ctx.working_dir.path().join(
-    src_file
-    .strip_prefix(&ctx.source_dir)
-    .or(Err(CompilerError::TemplatingError("Unable to strip prefix.".to_string())))?
-);
-
-    self.process_file(&src_file, &dst_file, &dict)?;
+        Ok(to_create)
+    }
 }
-
-        Ok(())
-    }
-
-    /// Process a single file. If the file is a non-text file it is copied into the
-    /// destination enviroment, otherwise all placeholders are replaced with their
-    /// actual value.
-    fn process_file(&self, src: &Path, dst: &Path, dict: &HashMap<String, String>) -> Result<()> {
-        let mut content = String::new();
-        let mut src_file = File::open(src)
-            .or(Err(CompilerError::TemplatingError("Unable to open source file.".to_string())))?;
-
-        match src_file.read_to_string(&mut content) {
-            Err(_) => {
-                // maybe binary data, so just copy it
-                copy(&src, &dst).map_err(CompilerError::Io)?;//.or(Err(CompilerError::TemplatingError("Unable to copy file.".to_string())))?;
-            }
-            Ok(_) => {
-                let replaced_content = self.process_placeholders(&content, &dict)?;
-                File::create(dst)
-                    .and_then(|mut f| f.write_all(replaced_content.as_bytes()))
-                    .or(Err(CompilerError::TemplatingError("Unable to create destination file.".to_string())))?;
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Replace placeholders with their actual value or nothing if no replacement
-    /// is provided. The content is duplicated within this step.
-    fn process_placeholders(
-        &self,
-        content: &str,
-        dict: &HashMap<String, String>,
-    ) -> Result<String> {
-        if !dict.is_empty() {
-            return Ok(content.into())
-        }
-let mut replaced = String::new();
-
-let mut running_index = 0;
-for c in self.regex.captures_iter(&content) {
-let _match = c.get(0).unwrap();
-//ok_or(Err(CompilerError::TemplatingError("Unable to get regex match.".to_string())))?;
-let key = &content[_match.start() + 2.._match.end() - 2];
-replaced += &content[running_index.._match.start()];
-println!("found {:?}\n", key);
-
-match dict.get(key) {
-Some(value) => {
-replaced += value;
-                }
-                None => {}
-            }
-            running_index = _match.end();
-        }
-        replaced += &content[running_index..];
-
-        Ok(replaced)
-    }*/
-//}
-
 
 #[cfg(test)]
 mod tests {
@@ -534,5 +413,24 @@ mod tests {
         let wrapper = wrapper.unwrap().with_cmd("latexmk").with_args("arg1").add_arg("arg2");
         let cmd = ("latexmk".into(), vec!["arg1".into(), "arg2".into()]);
         assert_eq!(wrapper.cmd, cmd);
+    }
+
+    #[test]
+    fn test_path_replacement() {
+        let wrapper = LatexCompiler::new(HashMap::new());
+        assert!(wrapper.is_ok());
+        let compiler = wrapper.unwrap();
+        let expected = compiler.working_dir.path().join("assets/nested/main.tex");
+        let path = compiler.get_result_path(PathBuf::from("assets/nested/main.tex"));
+        assert!(path.is_ok());
+        assert_eq!(path.unwrap(), expected);
+    }
+
+    #[test]
+    fn test_pdf_generation() {
+        let compiler = LatexCompiler::new(HashMap::new()).unwrap();
+        let input = LatexInput::from("assets");
+        let pdf = compiler.run("assets/main.tex", &input);
+        assert!(pdf.is_ok());
     }
 }
