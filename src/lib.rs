@@ -53,7 +53,7 @@ extern crate failure_derive;
 extern crate regex;
 extern crate tempfile;
 
-use regex::bytes::Regex;
+use regex::Regex;
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -202,36 +202,34 @@ impl TemplateProcessor {
     /// is provided. The content is duplicated within this step.
     fn process_placeholders(
         &self,
-        content: &[u8],
+        buf: &[u8],
         dict: &TemplateDict,
     ) -> Result<Vec<u8>> {
-        if !dict.is_empty() {
-            return Ok(content.into())
+        if dict.is_empty() {
+            return Ok(buf.into())
         }
-        let mut replaced = vec![];
-
+        let mut replaced = String::new();
+        let content = String::from_utf8_lossy(buf);
         let mut running_index = 0;
-        for c in self.regex.captures_iter(content) {
+        for c in self.regex.captures_iter(&content) {
             let _match = c.get(0).unwrap();
-            //ok_or(Err(CompilerError::TemplatingError("Unable to get regex match.".to_string())))?;
             let key = &content[_match.start() + 2.._match.end() - 2];
-            replaced.extend_from_slice(&content[running_index.._match.start()]);
-            println!("found {:?}\n", key);
+            replaced += &content[running_index.._match.start()];
 
-            let key_str = &std::str::from_utf8(key).map_err(LatexError::Utf8)?;
-            match dict.get(*key_str) {
+            match dict.get(key) {
                 Some(value) => {
-                    replaced.extend_from_slice(value.as_bytes());
+                    replaced += value;
                 }
                 None => {}
             }
             running_index = _match.end();
         }
-        replaced.extend_from_slice(&content[running_index..]);
+        replaced += &content[running_index..];
 
-        Ok(replaced)
+        Ok(replaced.as_bytes().to_vec())
     }
 }
+
 /// The wrapper struct around some latex compiler.
 /// It provides a clean temporary enviroment for the
 /// latex compilation.
@@ -426,19 +424,19 @@ let paths = read_dir(path)
         if !dict.is_empty() {
             return Ok(content.into())
         }
-        let mut replaced = String::new();
+let mut replaced = String::new();
 
-        let mut running_index = 0;
-        for c in self.regex.captures_iter(&content) {
-            let _match = c.get(0).unwrap();
-            //ok_or(Err(CompilerError::TemplatingError("Unable to get regex match.".to_string())))?;
-            let key = &content[_match.start() + 2.._match.end() - 2];
-            replaced += &content[running_index.._match.start()];
-            println!("found {:?}\n", key);
+let mut running_index = 0;
+for c in self.regex.captures_iter(&content) {
+let _match = c.get(0).unwrap();
+//ok_or(Err(CompilerError::TemplatingError("Unable to get regex match.".to_string())))?;
+let key = &content[_match.start() + 2.._match.end() - 2];
+replaced += &content[running_index.._match.start()];
+println!("found {:?}\n", key);
 
-            match dict.get(key) {
-                Some(value) => {
-                    replaced += value;
+match dict.get(key) {
+Some(value) => {
+replaced += value;
                 }
                 None => {}
             }
@@ -487,13 +485,15 @@ mod tests {
     fn test_latex_complex_folder_input() {
         let buf1 = include_bytes!("../assets/main.tex");
         let buf2 = include_bytes!("../assets/logo.png");
-        let buf3 = include_bytes!("../assets/card.tex");
-        let buf4 = include_bytes!("../assets/nested/main.tex");
+        let buf3 = include_bytes!("../assets/test.tex");
+        let buf4 = include_bytes!("../assets/card.tex");
+        let buf5 = include_bytes!("../assets/nested/main.tex");
         let expected = LatexInput{
-            input: vec![("assets/nested/main.tex".into(), buf4.to_vec()),
+            input: vec![("assets/nested/main.tex".into(), buf5.to_vec()),
+                        ("assets/test.tex".into(), buf3.to_vec()),
                         ("assets/main.tex".into(), buf1.to_vec()),
                         ("assets/logo.png".into(), buf2.to_vec()),
-                        ("assets/card.tex".into(), buf3.to_vec())]
+                        ("assets/card.tex".into(), buf4.to_vec())]
         };
         let mut input = LatexInput::new();
         input.add_folder(PathBuf::from("assets"));
@@ -509,6 +509,21 @@ mod tests {
         let res = templating.unwrap().process_placeholders(buf, &map);
         assert!(res.is_ok());
         assert_eq!(res.unwrap(), buf.to_vec());
+    }
+
+    #[test]
+    fn test_templating() {
+        let templating = TemplateProcessor::new();
+        assert!(templating.is_ok());
+        let mut map = HashMap::new();
+        map.insert("test".into(), "Minimal".into());
+
+        let buf = include_bytes!("../assets/test.tex");
+        let expected = include_bytes!("../assets/main.tex");
+        let res = templating.unwrap().process_placeholders(buf, &map);
+        assert!(res.is_ok());
+        //println!("After:\n{}", String::from_utf8_lossy(&res.unwrap()));
+        assert_eq!(res.unwrap(), expected.to_vec());
     }
 
     /*
