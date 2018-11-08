@@ -35,7 +35,6 @@
 //!     // create the template map
 //!     let mut dict = HashMap::new();
 //!     // provide the folder where the file for latex compiler are found
-//!     // a single folder shifts the path one directory down
 //!     let input = LatexInput::from("assets");
 //!     // create a new clean compiler enviroment and the compiler wrapper
 //!     let compiler = LatexCompiler::new(dict).unwrap();
@@ -54,13 +53,10 @@ extern crate failure_derive;
 extern crate regex;
 extern crate tempfile;
 
-use regex::Regex;
+use regex::bytes::Regex;
 use std::collections::HashMap;
-use std::ffi::OsStr;
-use std::fs::File;
-use std::fs::{copy, read_dir, create_dir, read};
-use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::fs;
+use std::path::PathBuf;
 use std::process::Command;
 use tempfile::{tempdir, TempDir};
 
@@ -77,6 +73,8 @@ pub enum LatexError {
     ContextCreationError(#[cause] std::io::Error),
     #[fail(display = "{}", _0)]
     Io(#[cause] std::io::Error),
+    #[fail(display = "{}", _0)]
+    Utf8(#[cause] std::str::Utf8Error),
 }
 
 /// result type alias idiom
@@ -84,30 +82,6 @@ type Result<T> = std::result::Result<T, LatexError>;
 
 /// An alias for a command line
 type Cmd = (String, Vec<String>);
-
-/// The context provides the clean envoriment for a compile process.
-/// It should be created new for every run since it destroys the
-/// temporary working directory.
-
-/// Latex enviroment is a clean temporary directory which is used to
-/// compile the input files and the command-line used to compile them.
-/*#[derive(Debug)]
-pub struct LatexEnv {
-}
-
-impl Context {
-    /// Create a new basic context or throw an error if we have no access to the temp directory.
-    /// Provide only the file name as main_file which can be found under the template source directory.
-    pub fn new() -> Result<Context> {
-        let dir = tempdir().map_err(CompilerError::Io)?;
-        Ok(Context {
-            working_dir: dir,
-            cmd: ("pdflatex".into(), vec!["-interaction=nonstopmode".into()])
-        })
-    }
-
-
-}*/
 
 /// The latex input provides the needed files
 /// as tuple vector with name, buffer as tuple.
@@ -136,27 +110,128 @@ impl LatexInput {
         self.input.push((name.into(), buf));
     }
 
+    /// Add a single file as input.
+    /// ## Example
+    /// ```
+    /// # use latexcompile::{LatexCompiler, LatexInput, LatexError};
+    /// fn main() {
+    ///   let mut input = LatexInput::from("assets/main.tex");
+    ///   input.add("name.tex", "test".as_bytes().to_vec());
+    /// }
+    /// ```
+    ///
+    /// ## Note
+    /// If the path is not a file or can't be converted to a string nothing is added and ok is returned.
     pub fn add_file(&mut self, file: PathBuf) -> Result<()> {
-        /*if file.is_file {
-            let name = file.to_str().ok_or(Err(CompilerError::CompilationError))?;
-            let mut content = fs::read(file)?;
-            let mut src_file = File::open(path)
-                .or(Err(CompilerError::TemplatingError("Unable to open source file.".to_string())))?;
-
-            self.add((file.to_str(), ));
-
-        }*/
+        if file.is_file() {
+            match file.to_str() {
+                Some(name) => {
+                    let content = fs::read(&file).map_err(LatexError::Io)?;
+                    self.input.push((name.to_string(), content));
+                }
+                None => {}
+            }
+        }
         Ok(())
     }
 
+    /// Add a whole folder as input.
+    /// ## Example
+    /// ```
+    /// # use latexcompile::{LatexCompiler, LatexInput, LatexError};
+    /// fn main() {
+    ///   let mut input = LatexInput::from("assets");
+    ///   input.add("name.tex", "test".as_bytes().to_vec());
+    /// }
+    /// ```
+    /// ## Note
+    /// If the path is not a folder nothing is added.
     pub fn add_folder(&mut self, folder: PathBuf) -> Result<()> {
+        if folder.is_dir() {
+            let paths = fs::read_dir(folder).map_err(LatexError::Io)?;
+
+            for path in paths {
+                let p = path.map_err(LatexError::Io)?.path();
+                if p.is_file() {
+                    self.add_file(p);
+                } else if p.is_dir() {
+                    self.add_folder(p);
+                }
+            }
+        }
         Ok(())
+    }
+}
+
+/// Provide a simple From conversion for &str to latex input.
+impl<'a> From<&'a str> for LatexInput {
+    fn from(s: &'a str) -> LatexInput {
+        let mut input = LatexInput::new();
+        let path = PathBuf::from(s);
+        if path.is_file() {
+            input.add_file(path);
+        } else if path.is_dir() {
+            input.add_folder(path);
+        }
+        input
     }
 }
 
 /// Internal type alias for the key value store
 type TemplateDict = HashMap<String, String>;
 
+
+/// The processor takes latex files as input and replaces
+/// matching placeholders (e.g. ##someVar##) with the real
+/// content provided as HashMap.
+struct TemplateProcessor {
+    regex: Regex,
+}
+
+impl TemplateProcessor {
+    /// Characters allowed as variable names: "a-zAZ0-9-_"
+    fn new() -> Result<TemplateProcessor> {
+        Ok(TemplateProcessor {
+            regex: Regex::new(r"##[a-z|A-Z|\d|-|_]+##")
+                .or(Err(LatexError::LatexError("Failed to compile regex.".to_string())))?,
+        })
+    }
+
+
+    /// Replace placeholders with their actual value or nothing if no replacement
+    /// is provided. The content is duplicated within this step.
+    fn process_placeholders(
+        &self,
+        content: &[u8],
+        dict: &TemplateDict,
+    ) -> Result<Vec<u8>> {
+        if !dict.is_empty() {
+            return Ok(content.into())
+        }
+        let mut replaced = vec![];
+
+        let mut running_index = 0;
+        for c in self.regex.captures_iter(content) {
+            let _match = c.get(0).unwrap();
+            //ok_or(Err(CompilerError::TemplatingError("Unable to get regex match.".to_string())))?;
+            let key = &content[_match.start() + 2.._match.end() - 2];
+            replaced.extend_from_slice(&content[running_index.._match.start()]);
+            println!("found {:?}\n", key);
+
+            let key_str = &std::str::from_utf8(key).map_err(LatexError::Utf8)?;
+            match dict.get(*key_str) {
+                Some(value) => {
+                    replaced.extend_from_slice(value.as_bytes());
+                }
+                None => {}
+            }
+            running_index = _match.end();
+        }
+        replaced.extend_from_slice(&content[running_index..]);
+
+        Ok(replaced)
+    }
+}
 /// The wrapper struct around some latex compiler.
 /// It provides a clean temporary enviroment for the
 /// latex compilation.
@@ -258,8 +333,8 @@ impl LatexCompiler {
             self.preprocess_file(&path, &destination)?;
 
         } else if path.is_dir() {
-            let paths = read_dir(path)
-                .or(Err(CompilerError::TemplatingError(format!("Failed to read directory {:?}.", path).to_string())))?;
+let paths = read_dir(path)
+.or(Err(CompilerError::TemplatingError(format!("Failed to read directory {:?}.", path).to_string())))?;
             create_dir(destination).map_err(CompilerError::Io)?;
             for path in paths {
                     let src_file = path
@@ -295,21 +370,6 @@ impl LatexCompiler {
     }*/
 
 
-/// The processor takes latex files as input and replaces
-/// matching placeholders (e.g. ##someVar##) with the real
-/// content provided as HashMap.
-struct TemplateProcessor {
-    regex: Regex,
-}
-
-impl TemplateProcessor {
-    /// Characters allowed as variable names: "a-zAZ0-9-_"
-    fn new() -> Result<TemplateProcessor> {
-        Ok(TemplateProcessor {
-            regex: Regex::new(r"##[a-z|A-Z|\d|-|_]+##")
-                .or(Err(LatexError::LatexError("Failed to compile regex.".to_string())))?,
-        })
-    }
 /*
     /// Replace variables for all files within the template path and
     /// copy the results into the created enviroment.
@@ -388,7 +448,7 @@ impl TemplateProcessor {
 
         Ok(replaced)
     }*/
-}
+//}
 
 
 #[cfg(test)]
@@ -407,16 +467,8 @@ mod tests {
 
     #[test]
     fn test_latex_file_input() {
-        let name = "main.tex";
-        let buf = r#"\documentclass{article}
-\usepackage[margin=0.7in]{geometry}
-\usepackage[parfill]{parskip}
-\usepackage[utf8]{inputenc}
-\begin{document}
-Minimal
-\end{document}"#;
-
-        let expected = LatexInput{ input: vec![("assets/main.tex".into(), buf.as_bytes().to_vec())]};
+        let buf = include_bytes!("../assets/main.tex");
+        let expected = LatexInput{ input: vec![("assets/main.tex".into(), buf.to_vec())]};
         let mut input = LatexInput::new();
         input.add_file(PathBuf::from("assets/main.tex"));
         assert_eq!(input, expected);
@@ -424,22 +476,42 @@ Minimal
 
     #[test]
     fn test_latex_folder_input() {
-        let name = "main.tex";
-        let buf = r#"\documentclass{article}
-\usepackage[margin=0.7in]{geometry}
-\usepackage[parfill]{parskip}
-\usepackage[utf8]{inputenc}
-\begin{document}
-Minimal
-\end{document}"#;
-
-        let expected = LatexInput{ input: vec![("assets/nested/main.tex".into(), buf.as_bytes().to_vec())]};
+        let buf = include_bytes!("../assets/main.tex");
+        let expected = LatexInput{ input: vec![("assets/nested/main.tex".into(), buf.to_vec())]};
         let mut input = LatexInput::new();
         input.add_folder(PathBuf::from("assets/nested"));
         assert_eq!(input, expected);
     }
 
-/*
+    #[test]
+    fn test_latex_complex_folder_input() {
+        let buf1 = include_bytes!("../assets/main.tex");
+        let buf2 = include_bytes!("../assets/logo.png");
+        let buf3 = include_bytes!("../assets/card.tex");
+        let buf4 = include_bytes!("../assets/nested/main.tex");
+        let expected = LatexInput{
+            input: vec![("assets/nested/main.tex".into(), buf4.to_vec()),
+                        ("assets/main.tex".into(), buf1.to_vec()),
+                        ("assets/logo.png".into(), buf2.to_vec()),
+                        ("assets/card.tex".into(), buf3.to_vec())]
+        };
+        let mut input = LatexInput::new();
+        input.add_folder(PathBuf::from("assets"));
+        assert_eq!(input, expected);
+    }
+
+    #[test]
+    fn test_empty_templating() {
+        let templating = TemplateProcessor::new();
+        assert!(templating.is_ok());
+        let map = HashMap::new();
+        let buf = include_bytes!("../assets/main.tex");
+        let res = templating.unwrap().process_placeholders(buf, &map);
+        assert!(res.is_ok());
+        assert_eq!(res.unwrap(), buf.to_vec());
+    }
+
+    /*
     #[test]
     fn test_context_cmd() {
         let mut context = Context::new(PathBuf::new(), "".into());
@@ -448,17 +520,5 @@ Minimal
         let ctx = ("latexmk".into(), vec!["arg1".into(), "arg2".into()]);
         assert_eq!(context.cmd, ctx);
     }
-
-    #[test]
-    fn test_templating() {
-        let assets = PathBuf::from("assets");
-        let context = Context::new("card.tex".into());
-        assert!(context.is_ok());
-        let templating = TemplateProcessor::new();
-        assert!(templating.is_ok());
-        let map = HashMap::new();
-        let res = templating.unwrap().process_sources(&context.unwrap(), &map);
-        println!("{:?}", res);
-        assert!(res.is_ok());
-    }*/
+*/
 }
