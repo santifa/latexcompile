@@ -34,12 +34,13 @@
 //! fn main() {
 //!     // create the template map
 //!     let mut dict = HashMap::new();
+//!     dict.insert("test".into(), "Minimal".into());
 //!     // provide the folder where the file for latex compiler are found
 //!     let input = LatexInput::from("assets");
 //!     // create a new clean compiler enviroment and the compiler wrapper
 //!     let compiler = LatexCompiler::new(dict).unwrap();
 //!     // run the underlying pdflatex or whatever
-//!     let result = compiler.run("main.tex", &input).unwrap();
+//!     let result = compiler.run("assets/test.tex", &input).unwrap();
 //!
 //!     // copy the file into the working directory
 //!     let output = ::std::env::current_dir().unwrap().join("out.pdf");
@@ -233,12 +234,13 @@ impl TemplateProcessor {
 /// latex compilation.
 /// ```
 /// use std::fs::write;
+/// use std::collections::HashMap;
 /// use latexcompile::{LatexCompiler, LatexInput, LatexError};
 ///
-/// fn main {
+/// fn main() {
 ///    let compiler = LatexCompiler::new(HashMap::new()).unwrap();
 ///    let input = LatexInput::from("assets");
-///    let pdf = compiler.run("main.tex");
+///    let pdf = compiler.run("assets/main.tex", &input);
 ///    assert!(pdf.is_ok());
 /// }
 /// ```

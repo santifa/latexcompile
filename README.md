@@ -41,7 +41,8 @@ The library should have an easy interface.
 The workflow of the library should be the following:
 - Create a new LatexCompiler
 - Provide the templating hashmap
-- Provide the files or text streams as input
+- Provide the files or text streams as latex input
+  along with the name of the main file
 - recieve the ouput pdf as binary stream
 
 The workflow of the rest service should be:
@@ -60,3 +61,4 @@ The workflow of the rest service should be:
 ## Timeline
 
 7.11.18 Design document, take over of old code
+8.11.18 Completed the first library design
