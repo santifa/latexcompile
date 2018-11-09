@@ -66,12 +66,10 @@ use tempfile::{tempdir, TempDir};
 pub enum LatexError {
     #[fail(display = "General failure: {}.", _0)]
     LatexError(String),
-    #[fail(display = "Failed to invoke latex compiler.")]
-    CompilationError,
-    #[fail(display = "Failed to change working enviroment.")]
-    EnviromentError,
-    #[fail(display = "Failed to create temporary context. {}", _0)]
-    ContextCreationError(#[cause] std::io::Error),
+    #[fail(display = "Failed to process template: {}.", _0)]
+    TemplateError(String),
+    #[fail(display = "Failed to convert input {}", _0)]
+    Input(#[cause] std::io::Error),
     #[fail(display = "{}", _0)]
     Io(#[cause] std::io::Error),
     #[fail(display = "{}", _0)]
@@ -127,7 +125,7 @@ impl LatexInput {
         if file.is_file() {
             match file.to_str() {
                 Some(name) => {
-                    let content = fs::read(&file).map_err(LatexError::Io)?;
+                    let content = fs::read(&file).map_err(LatexError::Input)?;
                     self.input.push((name.to_string(), content));
                 }
                 None => {}
@@ -149,14 +147,14 @@ impl LatexInput {
     /// If the path is not a folder nothing is added.
     pub fn add_folder(&mut self, folder: PathBuf) -> Result<()> {
         if folder.is_dir() {
-            let paths = fs::read_dir(folder).map_err(LatexError::Io)?;
+            let paths = fs::read_dir(folder).map_err(LatexError::Input)?;
 
             for path in paths {
-                let p = path.map_err(LatexError::Io)?.path();
+                let p = path.map_err(LatexError::Input)?.path();
                 if p.is_file() {
-                    self.add_file(p);
+                    self.add_file(p)?;
                 } else if p.is_dir() {
-                    self.add_folder(p);
+                    self.add_folder(p)?;
                 }
             }
         }
@@ -165,6 +163,8 @@ impl LatexInput {
 }
 
 /// Provide a simple From conversion for &str to latex input.
+/// If neither a valid file nor a folder an empty input struct is returned.
+#[allow(unused_must_use)]
 impl<'a> From<&'a str> for LatexInput {
     fn from(s: &'a str) -> LatexInput {
         let mut input = LatexInput::new();
@@ -193,7 +193,7 @@ impl TemplateProcessor {
     fn new() -> Result<TemplateProcessor> {
         Ok(TemplateProcessor {
             regex: Regex::new(r"##[a-z|A-Z|\d|-|_]+##")
-                .or(Err(LatexError::LatexError("Failed to compile regex.".to_string())))?,
+                .or(Err(LatexError::TemplateError("Failed to compile regex.".to_string())))?,
         })
     }
 
@@ -209,6 +209,7 @@ impl TemplateProcessor {
         }
         let mut replaced = String::new();
         let content = String::from_utf8_lossy(buf);
+
         let mut running_index = 0;
         for c in self.regex.captures_iter(&content) {
             let _match = c.get(0).unwrap();
@@ -224,7 +225,6 @@ impl TemplateProcessor {
             running_index = _match.end();
         }
         replaced += &content[running_index..];
-
         Ok(replaced.as_bytes().to_vec())
     }
 }
