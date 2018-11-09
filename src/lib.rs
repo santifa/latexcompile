@@ -57,7 +57,7 @@ extern crate tempfile;
 use regex::Regex;
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::{tempdir, TempDir};
 
@@ -224,8 +224,12 @@ impl TemplateProcessor {
             }
             running_index = _match.end();
         }
-        replaced += &content[running_index..];
-        Ok(replaced.as_bytes().to_vec())
+        if running_index > 0 {
+            replaced += &content[running_index..];
+            Ok(replaced.as_bytes().to_vec())
+        } else {
+            Ok(buf.into())
+        }
     }
 }
 
@@ -263,6 +267,10 @@ impl LatexCompiler {
             tp: TemplateProcessor::new()?,
             dict: dict,
         })
+    }
+
+    pub fn get_working_path(&self) -> &Path {
+        self.working_dir.path()
     }
 
     /// Overwrite the default command-line `pdflatex`
@@ -304,7 +312,6 @@ impl LatexCompiler {
             let transformed_buf = self.tp.process_placeholders(buf, &self.dict)?;
             let path = self.get_result_path(PathBuf::from(name))?;
             fs::write(path, transformed_buf).map_err(LatexError::Io)?;
-
         }
 
         // first and second run
@@ -434,5 +441,14 @@ mod tests {
         let input = LatexInput::from("assets");
         let pdf = compiler.run("assets/main.tex", &input);
         assert!(pdf.is_ok());
+    }
+
+    #[test]
+    fn test_pdf_generation_second() {
+        let compiler = LatexCompiler::new(HashMap::new()).unwrap();
+        let input = LatexInput::from("assets");
+        let pdf = compiler.run("assets/card.tex", &input);
+        assert!(pdf.is_ok());
+        fs::write("card.pdf", pdf.unwrap());
     }
 }
