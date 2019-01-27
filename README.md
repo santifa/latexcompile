@@ -1,13 +1,9 @@
 
 # latexcompile
 
-Latexcompile is a small rust crate which serves two aspects.
-First, it is a library to utilize some latex compiler in a clean
-temp enviroment. It provides basic templating features
-and accepts files and binary streams.
-
-Second, it provides a small REST service which accepts file streams
-and generates pdf files with latexcompile.
+Latexcompile is a small rust library which utilizes 
+some latex compiler in a clean temp enviroment. 
+It provides basic templating features and accepts files and binary streams.
 
 ## Context
 
@@ -23,16 +19,9 @@ generate pdfs on-the-fly.
 * easy interface
 * Loops or other higher constructs are not part of the library.
 
-### rest service
-
-* Simple service to generate pdfs out of provided files
-* Offer templating facility
-* Actor model
-
 ## Milestones
 
 1. Library prototype
-2. web service prototype
 3. testing (unit/integration)
 
 ## Solution
@@ -62,3 +51,4 @@ The workflow of the rest service should be:
 
 7.11.18 Design document, take over of old code
 8.11.18 Completed the first library design
+27.01.19 Publish lib
