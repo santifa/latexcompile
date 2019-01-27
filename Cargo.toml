@@ -5,7 +5,6 @@ repository = "https://github.com/santifa/latexcompile.git"
 keywords = ["latex", "wrapper"]
 categories = ["template engine"]
 readme = "README.md"
-license = "GPLv3"
 license-file = "LICENSE"
 version = "0.1.0"
 authors = ["Henrik Jürges <juerges.henrik@gmail.com>"]
