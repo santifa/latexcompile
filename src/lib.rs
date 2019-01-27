@@ -48,11 +48,9 @@
 //! }
 //! ```
 //!
-extern crate failure;
+use failure;
 #[macro_use]
 extern crate failure_derive;
-extern crate regex;
-extern crate tempfile;
 
 use regex::Regex;
 use std::collections::HashMap;
@@ -86,14 +84,12 @@ type Cmd = (String, Vec<String>);
 /// as tuple vector with name, buffer as tuple.
 #[derive(Debug, PartialEq)]
 pub struct LatexInput {
-    input: Vec<(String, Vec<u8>)>
+    input: Vec<(String, Vec<u8>)>,
 }
 
 impl LatexInput {
     pub fn new() -> LatexInput {
-        LatexInput {
-            input: vec![],
-        }
+        LatexInput { input: vec![] }
     }
 
     /// Add a single input tuple.
@@ -192,20 +188,17 @@ impl TemplateProcessor {
     /// Characters allowed as variable names: "a-zAZ0-9-_"
     fn new() -> Result<TemplateProcessor> {
         Ok(TemplateProcessor {
-            regex: Regex::new(r"##[a-z|A-Z|\d|-|_]+##")
-                .or(Err(LatexError::TemplateError("Failed to compile regex.".to_string())))?,
+            regex: Regex::new(r"##[a-z|A-Z|\d|-|_]+##").or(Err(LatexError::TemplateError(
+                "Failed to compile regex.".to_string(),
+            )))?,
         })
     }
 
     /// Replace placeholders with their actual value or nothing if no replacement
     /// is provided. The content is duplicated within this step.
-    fn process_placeholders(
-        &self,
-        buf: &[u8],
-        dict: &TemplateDict,
-    ) -> Result<Vec<u8>> {
+    fn process_placeholders(&self, buf: &[u8], dict: &TemplateDict) -> Result<Vec<u8>> {
         if dict.is_empty() {
-            return Ok(buf.into())
+            return Ok(buf.into());
         }
         let mut replaced = String::new();
         let content = String::from_utf8_lossy(buf);
@@ -304,7 +297,7 @@ impl LatexCompiler {
     pub fn run(&self, main: &str, input: &LatexInput) -> Result<Vec<u8>> {
         // check if input is empty
         if input.input.is_empty() {
-            return Err(LatexError::LatexError("No input files provided.".into()))
+            return Err(LatexError::LatexError("No input files provided.".into()));
         }
 
         // apply the templating and create resources in the working dir
@@ -331,7 +324,7 @@ impl LatexCompiler {
         let to_create = dir.join(path);
         match to_create.parent() {
             Some(p) => fs::create_dir_all(p).map_err(LatexError::Io)?,
-            None => ()
+            None => (),
         }
         Ok(to_create)
     }
@@ -345,7 +338,9 @@ mod tests {
     fn test_latex_input() {
         let name = "name.tex";
         let buf = "test".as_bytes();
-        let expected = LatexInput{ input: vec![("name.tex".into(), "test".as_bytes().to_vec())]};
+        let expected = LatexInput {
+            input: vec![("name.tex".into(), "test".as_bytes().to_vec())],
+        };
         let mut input = LatexInput::new();
         input.add(name, buf.to_vec());
         assert_eq!(input, expected);
@@ -354,7 +349,9 @@ mod tests {
     #[test]
     fn test_latex_file_input() {
         let buf = include_bytes!("../assets/main.tex");
-        let expected = LatexInput{ input: vec![("assets/main.tex".into(), buf.to_vec())]};
+        let expected = LatexInput {
+            input: vec![("assets/main.tex".into(), buf.to_vec())],
+        };
         let mut input = LatexInput::new();
         input.add_file(PathBuf::from("assets/main.tex"));
         assert_eq!(input, expected);
@@ -363,7 +360,9 @@ mod tests {
     #[test]
     fn test_latex_folder_input() {
         let buf = include_bytes!("../assets/main.tex");
-        let expected = LatexInput{ input: vec![("assets/nested/main.tex".into(), buf.to_vec())]};
+        let expected = LatexInput {
+            input: vec![("assets/nested/main.tex".into(), buf.to_vec())],
+        };
         let mut input = LatexInput::new();
         input.add_folder(PathBuf::from("assets/nested"));
         assert_eq!(input, expected);
@@ -376,12 +375,14 @@ mod tests {
         let buf3 = include_bytes!("../assets/test.tex");
         let buf4 = include_bytes!("../assets/card.tex");
         let buf5 = include_bytes!("../assets/nested/main.tex");
-        let expected = LatexInput{
-            input: vec![("assets/nested/main.tex".into(), buf5.to_vec()),
-                        ("assets/test.tex".into(), buf3.to_vec()),
-                        ("assets/main.tex".into(), buf1.to_vec()),
-                        ("assets/logo.png".into(), buf2.to_vec()),
-                        ("assets/card.tex".into(), buf4.to_vec())]
+        let expected = LatexInput {
+            input: vec![
+                ("assets/nested/main.tex".into(), buf5.to_vec()),
+                ("assets/test.tex".into(), buf3.to_vec()),
+                ("assets/main.tex".into(), buf1.to_vec()),
+                ("assets/logo.png".into(), buf2.to_vec()),
+                ("assets/card.tex".into(), buf4.to_vec()),
+            ],
         };
         let mut input = LatexInput::new();
         input.add_folder(PathBuf::from("assets"));
@@ -419,7 +420,11 @@ mod tests {
         let dict = HashMap::new();
         let wrapper = LatexCompiler::new(dict);
         assert!(wrapper.is_ok());
-        let wrapper = wrapper.unwrap().with_cmd("latexmk").with_args("arg1").add_arg("arg2");
+        let wrapper = wrapper
+            .unwrap()
+            .with_cmd("latexmk")
+            .with_args("arg1")
+            .add_arg("arg2");
         let cmd = ("latexmk".into(), vec!["arg1".into(), "arg2".into()]);
         assert_eq!(wrapper.cmd, cmd);
     }
