@@ -262,9 +262,9 @@ impl LatexCompiler {
         })
     }
 
-    pub fn persist_dir(self) -> PathBuf {
-        self.working_dir.into_path()
-    }
+    // pub fn persist_dir(self) -> PathBuf {
+    //     self.working_dir.into_path()
+    // }
 
     pub fn get_working_path(&self) -> &Path {
         self.working_dir.path()
